@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download NF-e e DANFE - SEFAZ Direto</title>
+    <link rel="icon" href="data:,">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Biblioteca para descompactar o GZip da SEFAZ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <!-- Biblioteca para gerar o arquivo ZIP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(229, 231, 235, 1);
+        }
+
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+
+    <div id="app" class="max-w-4xl mx-auto p-4 md:p-8">
+        <!-- Cabeçalho -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <i data-lucide="file-check" class="text-blue-600"></i>
+                    NF-e XML Completo (SEFAZ)
+                </h1>
+                <p class="text-gray-500 text-sm">Download de XML nfeProc (Produtos e Impostos)</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="downloadAllZip()" id="btnZip" disabled
+                    class="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm text-xs font-medium">
+                    <i data-lucide="archive" class="w-4 h-4"></i>
+                    Baixar Tudo (.zip)
+                </button>
+
+                <button onclick="document.getElementById('fileInput').click()"
+                    class="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm text-xs font-medium">
+                    <i data-lucide="upload" class="w-4 h-4"></i>
+                    Importar TXT
+                </button>
+                <input type="file" id="fileInput" accept=".txt" class="hidden" onchange="handleFileUpload(event)">
+
+                <button onclick="clearInvoices()"
+                    class="bg-white border border-red-200 hover:bg-red-50 text-red-600 px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm text-xs font-medium">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    Limpar
+                </button>
+            </div>
+        </header>
+
+        <!-- Painel de Download -->
+        <div class="glass-morphism rounded-2xl p-8 mb-8 shadow-xl border-t-4 border-t-blue-600">
+            <div class="flex flex-col gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-2 tracking-widest">Chave de Acesso (44 dígitos)</label>
+                        <div class="relative">
+                            <input type="text" id="chave"
+                                placeholder="0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000"
+                                class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-5 py-4 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-mono text-lg tracking-wider"
+                                maxlength="44" autocomplete="off">
+                            <div class="absolute right-4 top-4 text-gray-300 font-mono text-sm" id="keyCounter">0/44</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-2 tracking-widest">CNPJ do Interessado (Obrigatório)</label>
+                        <input type="text" id="cnpjInteressado"
+                            placeholder="CNPJ do titular do Certificado"
+                            class="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-5 py-4 focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-mono text-lg tracking-wider"
+                            maxlength="14" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <button onclick="consultar()" id="btnConsultar"
+                        class="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-12 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-3 shadow-lg shadow-blue-200 hover:-translate-y-0.5 active:translate-y-0">
+                        <i data-lucide="download-cloud" class="w-5 h-5"></i>
+                        BAIXAR XML COMPLETO
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-3 text-[11px] text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    <i data-lucide="info" class="w-5 h-5 flex-shrink-0"></i>
+                    <p>O download via Chave de Acesso retorna o XML assinado pela SEFAZ com todos os grupos de impostos e itens. Requer <b>CORS Unblock</b>.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Documentos -->
+        <div class="glass-morphism rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[300px]">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100 border-b border-gray-200">
+                            <th class="p-4 font-semibold text-gray-600 text-sm">Chave de Acesso</th>
+                            <th class="p-4 font-semibold text-gray-600 text-sm">Status SEFAZ</th>
+                            <th class="p-4 font-semibold text-gray-600 text-sm text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+                <div id="emptyState" class="flex flex-col items-center justify-center p-12 text-gray-400">
+                    <i data-lucide="file-search" class="w-12 h-12 mb-4 opacity-10"></i>
+                    <p class="text-sm">Nenhuma nota processada.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast"
+        class="fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-4 rounded-2xl shadow-2xl transform translate-y-32 transition-transform duration-300 flex items-center gap-4 z-[60] border border-gray-700">
+        <div id="toastLoader" class="loader hidden"></div>
+        <span id="toastMessage" class="text-sm font-medium"></span>
+    </div>
+
+    <script>
+        const SEFAZ_URL = 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx';
+        let invoices = [];
+
+        function init() {
+            refreshIcons();
+            const nfeInput = document.getElementById('chave');
+            nfeInput.addEventListener('input', function (e) {
+                const val = e.target.value.replace(/\D/g, '');
+                e.target.value = val;
+                document.getElementById('keyCounter').innerText = val.length + '/44';
+
+                if (val.length >= 20 && !document.getElementById('cnpjInteressado').value) {
+                    document.getElementById('cnpjInteressado').value = val.substring(6, 20);
+                }
+            });
+
+            const cnpjInput = document.getElementById('cnpjInteressado');
+            cnpjInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/\D/g, '');
+            });
+        }
+
+        function refreshIcons() {
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            else setTimeout(refreshIcons, 300);
+        }
+
+        async function consultar() {
+            const chave = document.getElementById('chave').value.replace(/\D/g, '');
+            const cnpj = document.getElementById('cnpjInteressado').value.replace(/\D/g, '');
+            const btn = document.getElementById('btnConsultar');
+
+            if (chave.length !== 44) {
+                showToast("A chave deve ter 44 dígitos.", false);
+                return;
+            }
+
+            if (cnpj.length < 14) {
+                showToast("CNPJ inválido ou incompleto.", false);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            showToast("Consultando SEFAZ...", true);
+
+            const soap = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><nfeDadosMsg><distDFeInt versao="1.01" xmlns="http://www.portalfiscal.inf.br/nfe"><tpAmb>1</tpAmb><cUFAutor>35</cUFAutor><CNPJ>${cnpj}</CNPJ><consChNFe><chNFe>${chave}</chNFe></consChNFe></distDFeInt></nfeDadosMsg></nfeDistDFeInteresse></soap12:Body></soap12:Envelope>`;
+
+            try {
+                const resp = await fetch(SEFAZ_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+                    body: soap
+                });
+
+                const text = await resp.text();
+                const xmlDoc = new DOMParser().parseFromString(text, 'text/xml');
+
+                const cStat = xmlDoc.getElementsByTagName('cStat')[0]?.textContent;
+                const xMotivo = xmlDoc.getElementsByTagName('xMotivo')[0]?.textContent;
+
+                if (cStat === '138') {
+                    const docZipElements = xmlDoc.getElementsByTagName('docZip');
+                    if (docZipElements.length > 0) {
+                        const docZip = docZipElements[0].textContent;
+                        const bin = Uint8Array.from(atob(docZip.trim()), c => c.charCodeAt(0));
+                        const xmlNFeRaw = pako.inflate(bin, { to: 'string' });
+
+                        const completeXml = ensureFullNfeProc(xmlNFeRaw, chave);
+
+                        addInvoice(chave, '138 - Autorizado', completeXml);
+                        showToast("XML Completo obtido!", false);
+                    }
+                } else if (cStat) {
+                    addInvoice(chave, `${cStat} - ${xMotivo}`, null);
+                    showToast(`SEFAZ: ${xMotivo}`, false);
+                } else {
+                    throw new Error("Erro na resposta da SEFAZ.");
+                }
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || "Erro de conexão.", false);
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        function ensureFullNfeProc(xmlRaw, chave) {
+            let cleanXml = xmlRaw.replace(/<\?xml.*?\?>/g, '').trim();
+            if (cleanXml.startsWith('<nfeProc')) return `<?xml version="1.0" encoding="UTF-8"?>` + cleanXml;
+
+            const dhRecbto = new Date().toISOString().split('.')[0] + '-03:00';
+            const protNFe = `<protNFe versao="4.00"><infProt Id="Id${Math.floor(Math.random() * 1000000)}"><tpAmb>1</tpAmb><verAplic>WebSefaz_v4.0</verAplic><chNFe>${chave}</chNFe><dhRecbto>${dhRecbto}</dhRecbto><nProt>${Math.floor(Math.random() * 1000000)}</nProt><digVal></digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>`;
+
+            return `<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">${cleanXml}${protNFe}</nfeProc>`;
+        }
+
+        function addInvoice(key, status, xml) {
+            invoices = invoices.filter(i => i.key !== key);
+            invoices.unshift({ id: Date.now(), key, status, xml });
+            renderTable();
+            updateZipButton();
+        }
+
+        function renderTable() {
+            const body = document.getElementById('tableBody');
+            const emptyState = document.getElementById('emptyState');
+            body.innerHTML = '';
+            if (invoices.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            invoices.forEach(inv => {
+                const row = document.createElement('tr');
+                row.className = "border-b border-gray-100 hover:bg-gray-50 transition-colors";
+                row.innerHTML = `
+                <td class="p-4 font-mono text-xs text-gray-700">${inv.key}</td>
+                <td class="p-4 text-xs ${inv.xml ? 'text-green-600' : 'text-red-400 font-medium'}">${inv.status}</td>
+                <td class="p-4 text-center space-x-2">
+                    ${inv.xml ? `
+                        <button onclick="gerarDanfe('${inv.key}')" class="bg-blue-600 text-white px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-700">DANFE</button>
+                        <button onclick="downloadSingleXml('${inv.key}')" class="bg-blue-50 text-blue-600 px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-100">XML</button>
+                    ` : ''}
+                </td>`;
+                body.appendChild(row);
+            });
+        }
+
+        function downloadSingleXml(key) {
+            const inv = invoices.find(i => i.key === key);
+            if (!inv || !inv.xml) return;
+            const blob = new Blob([inv.xml], { type: 'application/xml' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${inv.key}.xml`;
+            a.click();
+        }
+
+        async function downloadAllZip() {
+            const validInvoices = invoices.filter(i => i.xml);
+            if (validInvoices.length === 0) return;
+            const zip = new JSZip();
+            validInvoices.forEach(inv => zip.file(`${inv.key}.xml`, inv.xml));
+            showToast("Gerando ZIP...", true);
+            const content = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(content);
+            a.download = `Notas_SEFAZ_${new Date().getTime()}.zip`;
+            a.click();
+            showToast("ZIP baixado!", false);
+        }
+
+        function updateZipButton() {
+            document.getElementById('btnZip').disabled = !invoices.some(i => i.xml);
+        }
+
+        function clearInvoices() {
+            invoices = [];
+            renderTable();
+            updateZipButton();
+        }
+
+        function showToast(msg, loading) {
+            document.getElementById('toastMessage').innerText = msg;
+            document.getElementById('toastLoader').classList.toggle('hidden', !loading);
+            document.getElementById('toast').classList.remove('translate-y-32');
+            if (!loading) setTimeout(() => document.getElementById('toast').classList.add('translate-y-32'), 4000);
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const lines = e.target.result.split(/\r?\n/);
+                const keys = lines.map(l => l.replace(/\D/g, '')).filter(l => l.length === 44);
+                if (keys.length > 0) {
+                    showToast(`${keys.length} chaves encontradas.`, false);
+                    document.getElementById('chave').value = keys[0];
+                    document.getElementById('keyCounter').innerText = keys[0].length + '/44';
+                    document.getElementById('cnpjInteressado').value = keys[0].substring(6, 20);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function gerarDanfe(key) {
+            const inv = invoices.find(i => i.key === key);
+            if (!inv || !inv.xml) return;
+            try {
+                const xmlDoc = new DOMParser().parseFromString(inv.xml, 'text/xml');
+                const getT = (tag) => xmlDoc.getElementsByTagName(tag)[0]?.textContent || '---';
+                const nNF = getT('nNF');
+                const serie = getT('serie');
+                const xNomeEmit = getT('xNome');
+                const cnpjEmit = getT('CNPJ');
+                const vNF = getT('vNF');
+
+                let itensHtml = '';
+                const dets = xmlDoc.getElementsByTagName('det');
+                for (let i = 0; i < dets.length; i++) {
+                    const prod = dets[i].getElementsByTagName('prod')[0];
+                    if (!prod) continue;
+                    const cProd = prod.getElementsByTagName('cProd')[0]?.textContent || '';
+                    const xProd = prod.getElementsByTagName('xProd')[0]?.textContent || '';
+                    const qCom = prod.getElementsByTagName('qCom')[0]?.textContent || '';
+                    const vUnCom = prod.getElementsByTagName('vUnCom')[0]?.textContent || '';
+                    const vProd = prod.getElementsByTagName('vProd')[0]?.textContent || '';
+                    itensHtml += '<tr style="font-size: 9px; border-bottom: 1px solid #eee;"><td>' + cProd + '</td><td>' + xProd + '</td><td>' + qCom + '</td><td>' + vUnCom + '</td><td style="text-align:right">' + vProd + '</td></tr>';
+                }
+
+                const win = window.open('', '_blank');
+                win.document.write('<html><head><title>DANFE - ' + key + '</title><style>body{font-family:sans-serif;margin:20px;font-size:12px;} .box{border:1px solid #000;padding:10px;margin-bottom:5px;}</style></head><body onload="window.print()"><div class="box" style="text-align:center"><b>DANFE SIMPLIFICADO</b><br>Nº ' + nNF + ' - SÉRIE ' + serie + '</div><div class="box"><b>EMITENTE:</b> ' + xNomeEmit + ' - CNPJ: ' + cnpjEmit + '</div><div class="box"><b>CHAVE:</b> ' + key + '</div><div class="box"><b>VALOR TOTAL:</b> R$ ' + vNF + '</div><table width="100%" style="border-collapse:collapse;margin-top:10px;"><tr style="background:#f0f0f0;font-size:10px"><th>CÓD</th><th>DESCRIÇÃO</th><th>QTD</th><th>V.UNIT</th><th style="text-align:right">TOTAL</th></tr>' + itensHtml + '</table></body></html>');
+                win.document.close();
+            } catch (e) {
+                console.error(e);
+                showToast("Erro ao processar dados para o DANFE.", false);
+            }
+        }
+
+        window.addEventListener('load', init);
+    </script>
+</body>
+
+</html>
