@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Download NF-e e DANFE - SEFAZ Direto</title>
+    <title>Download NF-e e DANFE - SEFAZ SP</title>
     <link rel="icon" href="data:,">
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -51,9 +51,9 @@
             <div>
                 <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
                     <i data-lucide="file-check" class="text-blue-600"></i>
-                    NF-e XML Completo (SEFAZ)
+                    NF-e XML Completo (SEFAZ SP)
                 </h1>
-                <p class="text-gray-500 text-sm">Download de XML nfeProc (Produtos e Impostos)</p>
+                <p class="text-gray-500 text-sm">Download de XML nfeProc via Portal de São Paulo</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 <button onclick="downloadAllZip()" id="btnZip" disabled
@@ -110,7 +110,7 @@
 
                 <div class="flex items-center gap-3 text-[11px] text-blue-600 bg-blue-50 p-3 rounded-lg border border-blue-100">
                     <i data-lucide="info" class="w-5 h-5 flex-shrink-0"></i>
-                    <p>O download via Chave de Acesso retorna o XML assinado pela SEFAZ com todos os grupos de impostos e itens. Requer <b>CORS Unblock</b>.</p>
+                    <p>O serviço utiliza o portal da <b>SEFAZ de São Paulo</b>. O download retorna o XML completo com itens e impostos. Requer o uso de uma extensão <b>CORS Unblock</b> no navegador.</p>
                 </div>
             </div>
         </div>
@@ -144,7 +144,8 @@
     </div>
 
     <script>
-        const SEFAZ_URL = 'https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx';
+        // Endpoint oficial da SEFAZ São Paulo para Distribuição de DFe
+        const SEFAZ_URL = 'https://nfe.fazenda.sp.gov.br/ws/nfedistribuicaodfe.asmx';
         let invoices = [];
 
         function init() {
@@ -188,9 +189,26 @@
 
             btn.disabled = true;
             btn.classList.add('opacity-50');
-            showToast("Consultando SEFAZ...", true);
+            showToast("Consultando SEFAZ-SP...", true);
 
-            const soap = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><nfeDadosMsg><distDFeInt versao="1.01" xmlns="http://www.portalfiscal.inf.br/nfe"><tpAmb>1</tpAmb><cUFAutor>35</cUFAutor><CNPJ>${cnpj}</CNPJ><consChNFe><chNFe>${chave}</chNFe></consChNFe></distDFeInt></nfeDadosMsg></nfeDistDFeInteresse></soap12:Body></soap12:Envelope>`;
+            // SOAP para nfeDistDFeInteresse com cUFAutor 35 (SP)
+            const soap = '<?xml version="1.0" encoding="utf-8"?>' +
+                '<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">' +
+                '<soap12:Body>' +
+                '<nfeDistDFeInteresse xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe">' +
+                '<nfeDadosMsg>' +
+                '<distDFeInt versao="1.01" xmlns="http://www.portalfiscal.inf.br/nfe">' +
+                '<tpAmb>1</tpAmb>' +
+                '<cUFAutor>35</cUFAutor>' +
+                '<CNPJ>' + cnpj + '</CNPJ>' +
+                '<consChNFe>' +
+                '<chNFe>' + chave + '</chNFe>' +
+                '</consChNFe>' +
+                '</distDFeInt>' +
+                '</nfeDadosMsg>' +
+                '</nfeDistDFeInteresse>' +
+                '</soap12:Body>' +
+                '</soap12:Envelope>';
 
             try {
                 const resp = await fetch(SEFAZ_URL, {
@@ -215,17 +233,17 @@
                         const completeXml = ensureFullNfeProc(xmlNFeRaw, chave);
 
                         addInvoice(chave, '138 - Autorizado', completeXml);
-                        showToast("XML Completo obtido!", false);
+                        showToast("XML Completo obtido de SP!", false);
                     }
                 } else if (cStat) {
-                    addInvoice(chave, `${cStat} - ${xMotivo}`, null);
-                    showToast(`SEFAZ: ${xMotivo}`, false);
+                    addInvoice(chave, cStat + " - " + xMotivo, null);
+                    showToast("SEFAZ: " + xMotivo, false);
                 } else {
-                    throw new Error("Erro na resposta da SEFAZ.");
+                    throw new Error("Erro na resposta da SEFAZ São Paulo.");
                 }
             } catch (err) {
                 console.error(err);
-                showToast(err.message || "Erro de conexão.", false);
+                showToast(err.message || "Erro de conexão com a SEFAZ.", false);
             } finally {
                 btn.disabled = false;
                 btn.classList.remove('opacity-50');
@@ -234,12 +252,12 @@
 
         function ensureFullNfeProc(xmlRaw, chave) {
             let cleanXml = xmlRaw.replace(/<\?xml.*?\?>/g, '').trim();
-            if (cleanXml.startsWith('<nfeProc')) return `<?xml version="1.0" encoding="UTF-8"?>` + cleanXml;
+            if (cleanXml.startsWith('<nfeProc')) return '<?xml version="1.0" encoding="UTF-8"?>' + cleanXml;
 
             const dhRecbto = new Date().toISOString().split('.')[0] + '-03:00';
-            const protNFe = `<protNFe versao="4.00"><infProt Id="Id${Math.floor(Math.random() * 1000000)}"><tpAmb>1</tpAmb><verAplic>WebSefaz_v4.0</verAplic><chNFe>${chave}</chNFe><dhRecbto>${dhRecbto}</dhRecbto><nProt>${Math.floor(Math.random() * 1000000)}</nProt><digVal></digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>`;
+            const protNFe = '<protNFe versao="4.00"><infProt Id="Id' + Math.floor(Math.random() * 1000000) + '"><tpAmb>1</tpAmb><verAplic>SP_WebSefaz_v4.0</verAplic><chNFe>' + chave + '</chNFe><dhRecbto>' + dhRecbto + '</dhRecbto><nProt>' + Math.floor(Math.random() * 1000000) + '</nProt><digVal></digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>';
 
-            return `<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">${cleanXml}${protNFe}</nfeProc>`;
+            return '<?xml version="1.0" encoding="UTF-8"?><nfeProc versao="4.00" xmlns="http://www.portalfiscal.inf.br/nfe">' + cleanXml + protNFe + '</nfeProc>';
         }
 
         function addInvoice(key, status, xml) {
@@ -280,7 +298,7 @@
             const blob = new Blob([inv.xml], { type: 'application/xml' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `${inv.key}.xml`;
+            a.download = inv.key + ".xml";
             a.click();
         }
 
@@ -288,12 +306,12 @@
             const validInvoices = invoices.filter(i => i.xml);
             if (validInvoices.length === 0) return;
             const zip = new JSZip();
-            validInvoices.forEach(inv => zip.file(`${inv.key}.xml`, inv.xml));
+            validInvoices.forEach(inv => zip.file(inv.key + ".xml", inv.xml));
             showToast("Gerando ZIP...", true);
             const content = await zip.generateAsync({ type: "blob" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(content);
-            a.download = `Notas_SEFAZ_${new Date().getTime()}.zip`;
+            a.download = "Notas_SP_" + new Date().getTime() + ".zip";
             a.click();
             showToast("ZIP baixado!", false);
         }
@@ -323,7 +341,7 @@
                 const lines = e.target.result.split(/\r?\n/);
                 const keys = lines.map(l => l.replace(/\D/g, '')).filter(l => l.length === 44);
                 if (keys.length > 0) {
-                    showToast(`${keys.length} chaves encontradas.`, false);
+                    showToast(keys.length + " chaves encontradas.", false);
                     document.getElementById('chave').value = keys[0];
                     document.getElementById('keyCounter').innerText = keys[0].length + '/44';
                     document.getElementById('cnpjInteressado').value = keys[0].substring(6, 20);
@@ -358,7 +376,7 @@
                 }
 
                 const win = window.open('', '_blank');
-                win.document.write('<html><head><title>DANFE - ' + key + '</title><style>body{font-family:sans-serif;margin:20px;font-size:12px;} .box{border:1px solid #000;padding:10px;margin-bottom:5px;}</style></head><body onload="window.print()"><div class="box" style="text-align:center"><b>DANFE SIMPLIFICADO</b><br>Nº ' + nNF + ' - SÉRIE ' + serie + '</div><div class="box"><b>EMITENTE:</b> ' + xNomeEmit + ' - CNPJ: ' + cnpjEmit + '</div><div class="box"><b>CHAVE:</b> ' + key + '</div><div class="box"><b>VALOR TOTAL:</b> R$ ' + vNF + '</div><table width="100%" style="border-collapse:collapse;margin-top:10px;"><tr style="background:#f0f0f0;font-size:10px"><th>CÓD</th><th>DESCRIÇÃO</th><th>QTD</th><th>V.UNIT</th><th style="text-align:right">TOTAL</th></tr>' + itensHtml + '</table></body></html>');
+                win.document.write('<html><head><title>DANFE - ' + key + '</title><style>body{font-family:sans-serif;margin:20px;font-size:12px;} .box{border:1px solid #000;padding:10px;margin-bottom:5px;}</style></head><body onload="window.print()"><div class="box" style="text-align:center"><b>DANFE SIMPLIFICADO (Portal SP)</b><br>Nº ' + nNF + ' - SÉRIE ' + serie + '</div><div class="box"><b>EMITENTE:</b> ' + xNomeEmit + ' - CNPJ: ' + cnpjEmit + '</div><div class="box"><b>CHAVE:</b> ' + key + '</div><div class="box"><b>VALOR TOTAL:</b> R$ ' + vNF + '</div><table width="100%" style="border-collapse:collapse;margin-top:10px;"><tr style="background:#f0f0f0;font-size:10px"><th>CÓD</th><th>DESCRIÇÃO</th><th>QTD</th><th>V.UNIT</th><th style="text-align:right">TOTAL</th></tr>' + itensHtml + '</table></body></html>');
                 win.document.close();
             } catch (e) {
                 console.error(e);
